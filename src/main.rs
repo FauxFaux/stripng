@@ -4,7 +4,6 @@ use std::io;
 use std::io::{Read, Write};
 use std::path;
 
-use byteorder::ByteOrder;
 use byteorder::ReadBytesExt;
 use byteorder::WriteBytesExt;
 use byteorder::BE;
@@ -36,16 +35,22 @@ fn main() -> Result<(), Error> {
 
     while !file.eof()? {
         let len = file.read_u32::<BE>()?;
-        out.write_u32::<BE>(len)?;
+        let len_with_crc = u64::from(len) + 4;
 
         let mut chunk_type = [0u8; 4];
         file.read_exact(&mut chunk_type)?;
-        out.write_all(&chunk_type)?;
 
-        println!("{:?}: {}", String::from_utf8_lossy(&chunk_type), len);
+        let mut data = (&mut file).take(len_with_crc);
 
-        let len_with_crc = u64::from(len) + 4;
-        io::copy(&mut (&mut file).take(len_with_crc), &mut out)?;
+        let critical = chunk_type[0].is_ascii_uppercase();
+
+        if critical {
+            out.write_u32::<BE>(len)?;
+            out.write_all(&chunk_type)?;
+            io::copy(&mut data, &mut out)?;
+        } else {
+            io::copy(&mut data, &mut iowrap::Ignore::new())?;
+        }
     }
 
     out.into_inner()?.persist(path)?;

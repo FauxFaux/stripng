@@ -27,10 +27,21 @@ fn main() -> Result<(), Error> {
         .ok_or_else(|| err_msg("the root isn't a file!"))?;
 
     let file = fs::File::open(&path).with_context(|_| err_msg("opening input file"))?;
-    let mut file = iowrap::Eof::new(io::BufReader::new(file));
-    confirm_header_present(&mut file)?;
+    let file = io::BufReader::new(file);
 
     let mut out = io::BufWriter::new(tempfile::NamedTempFile::new_in(parent)?);
+
+    process(file, &mut out)?;
+
+    out.into_inner()?.persist(path)?;
+
+    Ok(())
+}
+
+fn process<R: Read, W: Write>(file: R, mut out: W) -> Result<(), Error> {
+    let mut file = iowrap::Eof::new(file);
+
+    confirm_header_present(&mut file)?;
     out.write_all(&HEADER)?;
 
     while !file.eof()? {
@@ -39,10 +50,9 @@ fn main() -> Result<(), Error> {
 
         let mut chunk_type = [0u8; 4];
         file.read_exact(&mut chunk_type)?;
+        let critical = chunk_type[0].is_ascii_uppercase();
 
         let mut data = (&mut file).take(len_with_crc);
-
-        let critical = chunk_type[0].is_ascii_uppercase();
 
         if critical {
             out.write_u32::<BE>(len)?;
@@ -53,8 +63,6 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    out.into_inner()?.persist(path)?;
-
     Ok(())
 }
 
@@ -64,4 +72,20 @@ fn confirm_header_present<R: Read>(mut file: R) -> Result<(), Error> {
         .with_context(|_| err_msg("reading header"))?;
     ensure!(HEADER == buf, "invalid header, not a png file");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io;
+
+    use super::process;
+
+    #[test]
+    fn gimp() {
+        let mut output = Vec::with_capacity(1024);
+        let input = io::Cursor::new(&include_bytes!("../tests/trans-gimp.png")[..]);
+        process(input, &mut output).unwrap();
+        let expected = &include_bytes!("../tests/trans-gimp-out.png")[..];
+        assert_eq!(expected, output.as_slice());
+    }
 }

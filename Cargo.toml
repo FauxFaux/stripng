@@ -4,6 +4,20 @@ version = "0.1.0"
 authors = ["Chris West (Faux) <git@goeswhere.com>"]
 edition = "2018"
 
+description = "strip non-critical chunks from .png images"
+
+categories = [
+    "command-line-utilities",
+    "multimedia::images",
+]
+
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/FauxFaux/stripng"
+
+[badges.travis-ci]
+repository = "FauxFaux/stripng"
+
 [dependencies]
 byteorder = "1"
 iowrap = "0.2"
